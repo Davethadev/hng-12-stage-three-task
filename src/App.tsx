@@ -304,7 +304,7 @@ function App() {
   return (
     <>
       <Toaster />
-      <main className="w-full h-screen min-h-screen overflow-y-auto bg-[#01110A] p-4 space-y-5 relative">
+      <main className="w-full h-screen min-h-screen overflow-hidden bg-[#01110A] p-4 space-y-5 relative">
         <h2 className="inter-semibold text-white text-lg">
           AI-Powered Text Processing Interface
         </h2>
