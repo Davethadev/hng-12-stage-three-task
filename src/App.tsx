@@ -46,6 +46,12 @@ declare global {
         create(options: {
           sourceLanguage: string;
           targetLanguage: string;
+          monitor?: (m: {
+            addEventListener(
+              event: string,
+              listener: (e: { loaded: number; total: number }) => void
+            ): void;
+          }) => void;
         }): Promise<{
           translate(text: string): Promise<string>;
         }>;
@@ -112,10 +118,18 @@ function App() {
         targetLanguage
       );
 
-      if (canTranslate === "readily") {
+      if (canTranslate === "readily" || canTranslate === "after-download") {
         const translator = await window.ai.translator.create({
-          sourceLanguage: "en", // Or use detected language
+          sourceLanguage: "en",
           targetLanguage: targetLanguage,
+          monitor(m) {
+            if (canTranslate === "after-download") {
+              m.addEventListener("downloadprogress", (e) => {
+                const progress = Math.round((e.loaded / e.total) * 100);
+                toast.info(`Downloading language pack: ${progress}%`);
+              });
+            }
+          },
         });
 
         const result = await translator.translate(textItem.content);
@@ -125,6 +139,7 @@ function App() {
         toast.error(`Translation to ${targetLanguage} not available`);
       }
     } catch (error) {
+      console.error(error);
       toast.error("Translation failed");
     } finally {
       setTextItemTranslatingStatus(textIndex, false);
