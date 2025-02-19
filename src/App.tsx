@@ -161,7 +161,11 @@ function App() {
         value
       );
 
-      if (canTranslate === "readily") {
+      if (canTranslate === "readily" || canTranslate === "after-download") {
+        if (canTranslate === "after-download") {
+          toast.info("Downloading language pack...");
+        }
+
         await translateTextItem(textIndex, value);
       } else {
         toast.error(`Translation to ${value} not available`);
