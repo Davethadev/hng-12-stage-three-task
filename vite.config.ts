@@ -10,4 +10,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    '%VITE_TRANSLATOR_API_TOKEN%': `"${process.env.VITE_TRANSLATOR_API_TOKEN}"`,
+    '%VITE_LANGUAGE_DETECTOR_API_TOKEN%': `"${process.env.VITE_LANGUAGE_DETECTOR_API_TOKEN}"`,
+  }
 })

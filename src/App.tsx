@@ -63,6 +63,7 @@ declare global {
 interface TextItem {
   content: string;
   language?: string;
+  languageCode?: string;
   status: "detecting" | "completed" | "failed";
   translations?: Record<string, string>;
   selectedLang?: string;
@@ -107,20 +108,20 @@ function App() {
     }
 
     const textItem = outputTexts[textIndex];
-    if (!textItem) return;
+    if (!textItem || !textItem.languageCode) return;
 
     setTextItemTranslatingStatus(textIndex, true);
 
     try {
       const translatorCapabilities = await window.ai.translator.capabilities();
       const canTranslate = translatorCapabilities.languagePairAvailable(
-        "en",
+        textItem.languageCode,
         targetLanguage
       );
 
       if (canTranslate === "readily" || canTranslate === "after-download") {
         const translator = await window.ai.translator.create({
-          sourceLanguage: "en",
+          sourceLanguage: textItem.languageCode,
           targetLanguage: targetLanguage,
           monitor(m) {
             if (canTranslate === "after-download") {
@@ -136,10 +137,16 @@ function App() {
         updateTextItemTranslation(textIndex, targetLanguage, result);
         toast.success(`Translation completed`);
       } else {
-        toast.error(`Translation to ${targetLanguage} not available`);
+        toast.error(
+          `Translation from ${
+            textItem.language
+          } to ${languageTagToHumanReadable(
+            targetLanguage,
+            "en"
+          )} is not available`
+        );
       }
     } catch (error) {
-      console.error(error);
       toast.error("Translation failed");
     } finally {
       setTextItemTranslatingStatus(textIndex, false);
@@ -152,23 +159,37 @@ function App() {
       return;
     }
 
+    const textItem = outputTexts[textIndex];
+    if (!textItem || !textItem.languageCode) {
+      toast.error("Source language not detected");
+      return;
+    }
+
     setTextItemSelectedLanguage(textIndex, value);
 
     try {
       const translatorCapabilities = await window.ai.translator.capabilities();
       const canTranslate = translatorCapabilities.languagePairAvailable(
-        "en",
+        textItem.languageCode,
         value
       );
 
       if (canTranslate === "readily" || canTranslate === "after-download") {
         if (canTranslate === "after-download") {
-          toast.info("Downloading language pack...");
+          toast.info(
+            `Downloading language pack for ${
+              textItem.language
+            } to ${languageTagToHumanReadable(value, "en")}...`
+          );
         }
 
         await translateTextItem(textIndex, value);
       } else {
-        toast.error(`Translation to ${value} not available`);
+        toast.error(
+          `Translation from ${
+            textItem.language
+          } to ${languageTagToHumanReadable(value, "en")} is not available`
+        );
       }
     } catch (error) {
       toast.error("Translation failed");
@@ -251,11 +272,16 @@ function App() {
     try {
       const result = await detector.detect(text);
       if (result && result.length > 0) {
+        const detectedCode = result[0].detectedLanguage;
         const humanReadableLang = languageTagToHumanReadable(
-          result[0].detectedLanguage,
+          detectedCode,
           "en"
         );
-        updateTextItemLanguage(textIndex, humanReadableLang as string);
+        updateTextItemLanguage(
+          textIndex,
+          humanReadableLang as string,
+          detectedCode
+        );
       } else {
         toast("No language detected");
         updateTextItemStatus(textIndex, "failed");
@@ -266,10 +292,16 @@ function App() {
     }
   };
 
-  const updateTextItemLanguage = (index: number, language: string) => {
+  const updateTextItemLanguage = (
+    index: number,
+    language: string,
+    languageCode: string
+  ) => {
     setOutputTexts((prev) =>
       prev.map((item, i) =>
-        i === index ? { ...item, language, status: "completed" as const } : item
+        i === index
+          ? { ...item, language, languageCode, status: "completed" as const }
+          : item
       )
     );
   };
@@ -327,11 +359,11 @@ function App() {
         <h2 className="inter-semibold text-white text-lg">
           AI-Powered Text Processing Interface
         </h2>
-        {/* {detectorStatus !== "ready" && (
-          <div className="bg-yellow-800 text-white p-2 rounded">
+        {detectorStatus !== "ready" && (
+          <div className="bg-[#004d29] inter-regular text-white text-sm p-2 rounded">
             Language detector status: {detectorStatus}
           </div>
-        )} */}
+        )}
         <section className="overflow-y-auto max-h-[65vh]">
           {outputTexts.length === 0 ? (
             <h2 className="inter-regular text-white">No texts found</h2>
@@ -344,123 +376,148 @@ function App() {
                 isTranslating,
                 translations,
                 selectedLang,
+                languageCode,
               } = item;
               return (
                 <div
                   key={index}
                   className="mb-4 p-3 bg-[#003E1F] rounded-lg grid grid-cols-1 gap-3"
                 >
-                  <p className="inter-regular text-white">{content}</p>
-                  {status === "detecting" ? (
-                    <div>
-                      <Loader className="animate-spin mr-2" size={16} />
-                    </div>
-                  ) : status === "completed" && language ? (
-                    <p className="inter-regular text-gray-400 text-sm">
-                      Detected language: {language}
-                    </p>
-                  ) : (
-                    <p className="inter-regular text-gray-400 text-sm">
-                      Language detection unavailable
-                    </p>
-                  )}
-
-                  {status === "completed" && language === "English" && (
-                    <div className="flex items-center gap-4">
-                      <p className="inter-regular text-white text-sm">
-                        Translate to:
-                      </p>
-                      <Form {...form}>
-                        <form className="w-44">
-                          <FormField
-                            control={form.control}
-                            name={`language-${index}`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <Select
-                                  onValueChange={(value) => {
-                                    field.onChange(value);
-                                    handleOnChange(value, index);
-                                  }}
-                                  defaultValue={selectedLang}
-                                  value={selectedLang}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger
-                                      className="border-2 border-white outline-none shadow-none bg-transparent inter-regular text-white text-sm"
-                                      disabled={isTranslating}
-                                    >
-                                      <SelectValue
-                                        placeholder="Select language"
-                                        className="text-sm"
-                                      />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {/* <SelectItem
-                                        value="en"
-                                        className="inter-regular text-white text-sm"
-                                      >
-                                        English
-                                      </SelectItem> */}
-                                    <SelectItem
-                                      value="pt"
-                                      className="inter-regular text-white text-sm"
-                                    >
-                                      Portuguese
-                                    </SelectItem>
-                                    <SelectItem
-                                      value="es"
-                                      className="inter-regular text-white text-sm"
-                                    >
-                                      Spanish
-                                    </SelectItem>
-                                    <SelectItem
-                                      value="ru"
-                                      className="inter-regular text-white text-sm"
-                                    >
-                                      Russian
-                                    </SelectItem>
-                                    <SelectItem
-                                      value="tr"
-                                      className="inter-regular text-white text-sm"
-                                    >
-                                      Turkish
-                                    </SelectItem>
-                                    <SelectItem
-                                      value="fr"
-                                      className="inter-regular text-white"
-                                    >
-                                      French
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </FormItem>
-                            )}
-                          />
-                        </form>
-                      </Form>
-                    </div>
-                  )}
-                  {isTranslating && (
-                    <Loader
-                      className="animate-spin ml-2"
-                      size={16}
-                      color="white"
-                    />
-                  )}
-                  {/* Display translation if available */}
-                  {translations &&
-                    selectedLang &&
-                    translations[selectedLang] && (
-                      <div className="mt-2 p-2 bg-[#004d29] rounded">
-                        <p className="inter-regular text-white text-sm">
-                          Translation (
-                          {languageTagToHumanReadable(selectedLang, "en")}
-                          ): {translations[selectedLang]}
-                        </p>
+                  <p className="inter-regular text-white text-sm">{content}</p>
+                  <div className="flex items-center justify-between">
+                    {status === "detecting" ? (
+                      <div>
+                        <Loader className="animate-spin mr-2" size={16} />
                       </div>
+                    ) : status === "completed" && language ? (
+                      <p className="inter-regular text-gray-400 text-sm">
+                        Detected language: {language}
+                      </p>
+                    ) : (
+                      <p className="inter-regular text-gray-400 text-sm">
+                        Language detection unavailable
+                      </p>
                     )}
+                    {languageCode === "en" && (
+                      <button
+                        onClick={() => toast.error("Summarization unavailable")}
+                        className="w-28 h-10 p-2 border-2 border-white rounded-lg inter-regular text-sm text-white block hover:cursor-pointer hover:bg-white hover:text-[#4d7964]"
+                      >
+                        Summarize
+                      </button>
+                    )}
+                  </div>
+
+                  {status === "completed" && language && (
+                    <>
+                      <div className="flex items-center gap-4">
+                        <p className="inter-regular text-white text-sm">
+                          Translate from {language} to:
+                        </p>
+                        <Form {...form}>
+                          <form className="w-44">
+                            <FormField
+                              control={form.control}
+                              name={`language-${index}`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <Select
+                                    onValueChange={(value) => {
+                                      field.onChange(value);
+                                      handleOnChange(value, index);
+                                    }}
+                                    defaultValue={selectedLang}
+                                    value={selectedLang}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger
+                                        className="border-2 border-white outline-none shadow-none bg-transparent inter-regular text-white text-sm"
+                                        disabled={isTranslating}
+                                      >
+                                        <SelectValue
+                                          placeholder="Select language"
+                                          className="text-sm"
+                                        />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {languageCode !== "en" && (
+                                        <SelectItem
+                                          value="en"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          English
+                                        </SelectItem>
+                                      )}
+                                      {languageCode !== "pt" && (
+                                        <SelectItem
+                                          value="pt"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          Portuguese
+                                        </SelectItem>
+                                      )}
+                                      {languageCode !== "es" && (
+                                        <SelectItem
+                                          value="es"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          Spanish
+                                        </SelectItem>
+                                      )}
+                                      {languageCode !== "ru" && (
+                                        <SelectItem
+                                          value="ru"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          Russian
+                                        </SelectItem>
+                                      )}
+                                      {languageCode !== "tr" && (
+                                        <SelectItem
+                                          value="tr"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          Turkish
+                                        </SelectItem>
+                                      )}
+                                      {languageCode !== "fr" && (
+                                        <SelectItem
+                                          value="fr"
+                                          className="inter-regular text-white text-sm"
+                                        >
+                                          French
+                                        </SelectItem>
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                </FormItem>
+                              )}
+                            />
+                          </form>
+                        </Form>
+                      </div>
+                      {isTranslating && (
+                        <Loader
+                          className="animate-spin ml-2"
+                          size={16}
+                          color="white"
+                        />
+                      )}
+                      {translations &&
+                        selectedLang &&
+                        translations[selectedLang] && (
+                          <div className="mt-2 p-2 rounded space-y-2 bg-[#004d29]">
+                            <p className="inter-regular text-white text-sm">
+                              Translation (
+                              {languageTagToHumanReadable(selectedLang, "en")}
+                              ):
+                              {translations[selectedLang]}
+                            </p>
+                          </div>
+                        )}
+                    </>
+                  )}
                 </div>
               );
             })
@@ -478,12 +535,12 @@ function App() {
           ></textarea>
           <button
             onClick={addText}
-            className="hover:cursor-pointer"
+            className="hover:cursor-pointer disabled:hover:cursor-default text-white disabled:text-gray-400"
             disabled={
               detectorStatus !== "ready" || isDetecting || text.trim() === ""
             }
           >
-            <Send color="white" />
+            <Send />
           </button>
         </div>
       </main>
