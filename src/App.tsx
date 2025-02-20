@@ -398,7 +398,7 @@ function App() {
                         Language detection unavailable
                       </p>
                     )}
-                    {languageCode === "en" && (
+                    {content.length > 50 && languageCode === "en" && (
                       <button
                         onClick={() => toast.error("Summarization unavailable")}
                         className="w-28 h-10 p-2 border-2 border-white rounded-lg inter-regular text-sm text-white block hover:cursor-pointer hover:bg-white hover:text-[#4d7964]"
